@@ -204,9 +204,34 @@ class OpticalContrastInspector(tk.Tk):
     def _build_ui(self):
         style = ttk.Style(self)
         style.theme_use("clam")
+        # Neutral surfaces frame the existing blue emphasis without changing it.
+        self.configure(background="#f1f5f9")
+        style.configure("TFrame", background="#ffffff")
+        style.configure("TLabel", background="#ffffff")
+        style.configure("Muted.TLabel", background="#ffffff", foreground="#526176",
+                        font=("Microsoft YaHei UI", 9))
+        style.configure("TButton", background="#ffffff", foreground="#334155", padding=(10, 6),
+                        bordercolor="#cbd5e1", lightcolor="#ffffff", darkcolor="#ffffff",
+                        borderwidth=1, relief="flat", font=("Microsoft YaHei UI", 10))
+        style.map("TButton", background=[("disabled", "#f1f5f9"), ("pressed", "#dbeafe"), ("active", "#eff6ff")],
+                  foreground=[("disabled", "#8491a3")], bordercolor=[("focus", "#1d4ed8"), ("active", "#93b4eb")])
+        style.configure("TEntry", fieldbackground="#ffffff", bordercolor="#cbd5e1", padding=5)
+        style.map("TEntry", bordercolor=[("focus", "#1d4ed8")])
+        style.configure("TCombobox", fieldbackground="#ffffff", background="#f1f5f9",
+                        bordercolor="#cbd5e1", arrowcolor="#475569", padding=5)
+        style.map("TCombobox", fieldbackground=[("readonly", "#ffffff")],
+                  selectbackground=[("readonly", "#dbeafe")], selectforeground=[("readonly", "#172554")])
+        style.configure("TCheckbutton", background="#ffffff")
+        style.map("TCheckbutton", background=[("active", "#eff6ff")])
+        style.configure("TSeparator", background="#e2e8f0")
+        for scrollbar in ("Horizontal.TScrollbar", "Vertical.TScrollbar"):
+            style.configure(scrollbar, background="#d5deea", troughcolor="#f1f5f9",
+                            borderwidth=0, arrowcolor="#64748b", arrowsize=12)
+            style.map(scrollbar, background=[("pressed", "#94a3b8"), ("active", "#b6c5d9")])
         style.configure("Title.TLabel", font=("Microsoft YaHei UI", 13, "bold"))
-        style.configure("Main.TNotebook", background="#dce5f2", tabmargins=(12, 10, 12, 0))
+        style.configure("Main.TNotebook", background="#f1f5f9", borderwidth=0, tabmargins=(12, 10, 12, 0))
         style.configure("Main.TNotebook.Tab", font=("Microsoft YaHei UI", 16, "bold"), padding=(32, 14))
+        style.configure("Main.TNotebook.Tab", background="#e8edf5", bordercolor="#d5deea")
         style.map("Main.TNotebook.Tab", background=[("selected", "#1d4ed8"), ("active", "#cbdafa")],
                   foreground=[("selected", "white")])
         style.configure("Pick.Toolbutton", padding=(12, 8), font=("Microsoft YaHei UI", 11, "bold"))
@@ -236,10 +261,11 @@ class OpticalContrastInspector(tk.Tk):
         self.add_fit_button.pack(side="left")
         self.thickness_button = ttk.Button(pickbar, text="厚度计算", command=self.calculate_thickness, state="disabled")
         self.thickness_button.pack(side="left", padx=(12, 0))
-        ttk.Label(self.analysis_tab, textvariable=self.file_text, padding=(14, 0, 14, 8), wraplength=700).pack(fill="x")
+        ttk.Label(self.analysis_tab, textvariable=self.file_text, style="Muted.TLabel", padding=(14, 0, 14, 8), wraplength=700).pack(fill="x")
         # Reserve result space before giving the remaining area to the image.
         result_panel = ttk.Frame(self.analysis_tab)
         result_panel.pack(side="bottom", fill="x")
+        ttk.Separator(result_panel).pack(fill="x", padx=14, pady=(6, 0))
         panel = ttk.Frame(self.analysis_tab, padding=(12, 0))
         panel.pack(fill="both", expand=True)
         panel.rowconfigure(0, weight=1)
@@ -261,13 +287,13 @@ class OpticalContrastInspector(tk.Tk):
         self.canvas.bind("<ButtonPress-3>", self._pan_start)
         self.canvas.bind("<B3-Motion>", self._pan_motion)
         self.canvas.bind("<ButtonRelease-3>", self._pan_end)
-        ttk.Label(result_panel, textvariable=self.sample_text, padding=(14, 8), wraplength=700).pack(fill="x")
+        ttk.Label(result_panel, textvariable=self.sample_text, style="Muted.TLabel", padding=(14, 8), wraplength=700).pack(fill="x")
         ttk.Label(result_panel, textvariable=self.contrast_text, style="Title.TLabel", padding=(14, 4), wraplength=700).pack(fill="x")
         self.thickness_label = ttk.Label(result_panel, textvariable=self.thickness_text,
                                          style="Title.TLabel", padding=(14, 4), wraplength=700)
         self.thickness_label.pack(fill="x")
-        ttk.Label(result_panel, text="C = (背景均值 − 信号均值) / 背景均值。使用图片编码值，未做 gamma 线性化；约 285 nm 衬底先用 C_G 标定。", padding=(14, 4), wraplength=700).pack(fill="x")
-        ttk.Label(result_panel, textvariable=self.status_text, padding=(14, 4, 14, 12), wraplength=700).pack(fill="x")
+        ttk.Label(result_panel, text="C = (背景均值 − 信号均值) / 背景均值。使用图片编码值，未做 gamma 线性化；约 285 nm 衬底先用 C_G 标定。", style="Muted.TLabel", padding=(14, 4), wraplength=700).pack(fill="x")
+        ttk.Label(result_panel, textvariable=self.status_text, style="Muted.TLabel", padding=(14, 4, 14, 12), wraplength=700).pack(fill="x")
         self._build_fitting_ui()
         self._build_regression_ui()
 
@@ -428,7 +454,7 @@ class OpticalContrastInspector(tk.Tk):
         self.fit_parameters = tk.StringVar(value="斜率：—     截距：—     R²：—")
         ttk.Label(self.regression_tab, textvariable=self.fit_parameters, style="Title.TLabel", padding=(14, 8), wraplength=700).pack(fill="x")
         self.regression_status = tk.StringVar(value="优先比较 C_G 和 C_B；需要本机 AFM 标定，不能直接保证整个 0–30 nm 范围线性。")
-        ttk.Label(self.regression_tab, textvariable=self.regression_status, padding=(14, 0, 14, 8), wraplength=700).pack(fill="x")
+        ttk.Label(self.regression_tab, textvariable=self.regression_status, style="Muted.TLabel", padding=(14, 0, 14, 8), wraplength=700).pack(fill="x")
         self.show_residuals = tk.BooleanVar(value=False)
         ttk.Checkbutton(self.regression_tab, text="查看厚度残差（实测 − 拟合），检查是否存在弯曲趋势", variable=self.show_residuals,
                         command=self._draw_fit_plot).pack(anchor="w", padx=14, pady=(0, 6))
@@ -501,7 +527,12 @@ class OpticalContrastInspector(tk.Tk):
         table_frame.pack(fill="both", expand=True)
         table_frame.rowconfigure(0, weight=1)
         table_frame.columnconfigure(0, weight=1)
-        ttk.Style(self).configure("Fit.Treeview", font=("Microsoft YaHei UI", 11), rowheight=30)
+        style = ttk.Style(self)
+        style.configure("Fit.Treeview", font=("Microsoft YaHei UI", 11), rowheight=34,
+                        background="#ffffff", fieldbackground="#ffffff", bordercolor="#d5deea", borderwidth=1)
+        style.configure("Fit.Treeview.Heading", font=("Microsoft YaHei UI", 10, "bold"),
+                        padding=(8, 8), background="#e8edf5", foreground="#334155", relief="flat")
+        style.map("Fit.Treeview.Heading", background=[("active", "#dbeafe")])
         self.fit_table = ttk.Treeview(table_frame, columns=FIT_COLUMNS, show="tree headings", selectmode="extended", style="Fit.Treeview")
         self.fit_table.heading("#0", text="参与拟合")
         self.fit_table.column("#0", width=90, minwidth=90, stretch=False)
@@ -520,8 +551,8 @@ class OpticalContrastInspector(tk.Tk):
         self.fit_status = tk.StringVar(value="共 0 行")
         ttk.Label(self.fitting_tab, textvariable=self.fit_status, padding=(14, 8)).pack(fill="x")
         self.fit_io_status = tk.StringVar(value="导入会追加到表格末尾；导出保存全部行（包括空白厚度）。")
-        ttk.Label(self.fitting_tab, textvariable=self.fit_io_status, wraplength=700, padding=(14, 0, 14, 8)).pack(fill="x")
-        ttk.Label(self.fitting_tab, text="TXT 保存全部四列数据，不保存勾选状态；新增及导入行默认勾选。到“拟合”页计算。", padding=(14, 0, 14, 12)).pack(fill="x")
+        ttk.Label(self.fitting_tab, textvariable=self.fit_io_status, style="Muted.TLabel", wraplength=700, padding=(14, 0, 14, 8)).pack(fill="x")
+        ttk.Label(self.fitting_tab, text="TXT 保存全部四列数据，不保存勾选状态；新增及导入行默认勾选。到“拟合”页计算。", style="Muted.TLabel", padding=(14, 0, 14, 12)).pack(fill="x")
 
 
     def _insert_fitting_row(self, values):
@@ -672,6 +703,7 @@ class OpticalContrastInspector(tk.Tk):
         row = selected[0]
         dialog = tk.Toplevel(self)
         dialog.title("填写 / 修改拟合数据")
+        dialog.configure(background="#ffffff")
         dialog.transient(self)
         dialog.resizable(False, False)
         body = ttk.Frame(dialog, padding=18)
