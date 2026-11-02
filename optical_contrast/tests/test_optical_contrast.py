@@ -5,7 +5,8 @@ from unittest.mock import patch
 from PIL import Image
 
 from optical_contrast_inspector import (optical_contrast, region_box, region_means, linear_fit,
-                                       parse_fitting_text, read_fitting_txt, write_fitting_txt, image_point)
+                                       parse_fitting_text, read_fitting_txt, write_fitting_txt, image_point,
+                                       predict_thickness)
 
 
 class ContrastTests(unittest.TestCase):
@@ -52,6 +53,24 @@ class ContrastTests(unittest.TestCase):
                      [(0, -.1, 0, ""), (0, -.2, 0, 10)], [(0, -.1, 0, -1), (0, -.2, 0, 10)]):
             with self.assertRaises(ValueError):
                 linear_fit(rows)
+
+    def test_predict_uses_fitted_channel_and_intercept(self):
+        rows = [(0, 0, 0, 2), (-.5, -.4, .1, 22)]
+        for channel, expected in (("C_R", 6), ("C_G", 12), ("C_B", 22)):
+            prediction = predict_thickness(linear_fit(rows, channel), (-.1, -.2, .1))
+            self.assertAlmostEqual(prediction["thickness"], expected)
+            self.assertEqual(prediction["channel"], channel)
+            self.assertFalse(prediction["extrapolated"])
+
+    def test_prediction_invalid_channel_value_and_extrapolation(self):
+        result = linear_fit([(0, 0, 0, 2), (-.5, -.4, .1, 22)])
+        self.assertAlmostEqual(predict_thickness(result, (None, -.2, None))["thickness"], 12)
+        for value in (None, float("nan"), float("inf")):
+            with self.assertRaises(ValueError):
+                predict_thickness(result, (0, value, 0))
+        prediction = predict_thickness(result, (0, .1, 0))
+        self.assertAlmostEqual(prediction["thickness"], -3)
+        self.assertTrue(prediction["extrapolated"])
 
     def test_txt_round_trip_signed_and_empty(self):
         rows = [("-0.1234567890123456", "-0.2", "0.1", "10"), ("", "-0.3", "", "")]

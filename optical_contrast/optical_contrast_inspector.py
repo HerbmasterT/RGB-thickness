@@ -113,6 +113,21 @@ def linear_fit(rows, channel="C_G"):
                 mean_x=mx, mean_y=my, x_label=channel, channel=channel, rmse=math.sqrt(residual / n))
 
 
+def predict_thickness(result, contrasts):
+    """Apply the fitted channel and full-precision line to a new sample."""
+    channel = result["channel"]
+    contrast = contrasts[CHANNELS.index(channel)]
+    if contrast is None:
+        raise ValueError(f"背景的 {channel} 通道均值为 0，无法计算厚度。")
+    thickness = result["mean_y"] + result["slope"] * (contrast - result["mean_x"])
+    if not math.isfinite(contrast) or not math.isfinite(thickness):
+        raise ValueError("数值超出可计算范围，请检查采样与拟合数据。")
+    xmin = min(x for x, _ in result["points"])
+    xmax = max(x for x, _ in result["points"])
+    return dict(thickness=thickness, channel=channel, contrast=contrast,
+                extrapolated=not xmin <= contrast <= xmax)
+
+
 def read_fitting_txt(path):
     return parse_fitting_text(Path(path).read_text(encoding="utf-8-sig"))
 
@@ -171,11 +186,13 @@ class OpticalContrastInspector(tk.Tk):
         self.exported_rows = ()
         self.checked_rows = set()
         self.fit_result = None
+        self.thickness_result = None
         self.pick_mode = tk.StringVar(value="")
         self.file_text = tk.StringVar(value="尚未打开图片")
         self.status_text = tk.StringVar(value="先打开图片，再点击 background 选背景区域。")
         self.sample_text = tk.StringVar(value="background：未选择     signal：未选择")
         self.contrast_text = tk.StringVar(value="C_R：—    C_G：—    C_B：—")
+        self.thickness_text = tk.StringVar(value="厚度：—；请先在“拟合”页完成线性拟合。")
         self._build_ui()
         self.bind("<Control-o>", lambda event: self.open_image())
         self.bind("<Escape>", lambda event: self.clear_regions())
@@ -215,7 +232,12 @@ class OpticalContrastInspector(tk.Tk):
         self.signal_button.pack(side="left", padx=(0, 12))
         self.add_fit_button = ttk.Button(pickbar, text="加入拟合", command=self.add_to_fitting, state="disabled")
         self.add_fit_button.pack(side="left")
+        self.thickness_button = ttk.Button(pickbar, text="厚度计算", command=self.calculate_thickness, state="disabled")
+        self.thickness_button.pack(side="left", padx=(12, 0))
         ttk.Label(self.analysis_tab, textvariable=self.file_text, padding=(14, 0, 14, 8), wraplength=700).pack(fill="x")
+        # Reserve result space before giving the remaining area to the image.
+        result_panel = ttk.Frame(self.analysis_tab)
+        result_panel.pack(side="bottom", fill="x")
         panel = ttk.Frame(self.analysis_tab, padding=(12, 0))
         panel.pack(fill="both", expand=True)
         panel.rowconfigure(0, weight=1)
@@ -231,10 +253,13 @@ class OpticalContrastInspector(tk.Tk):
         self.canvas.bind("<ButtonPress-1>", self._press)
         self.canvas.bind("<B1-Motion>", self._motion)
         self.canvas.bind("<ButtonRelease-1>", self._release)
-        ttk.Label(self.analysis_tab, textvariable=self.sample_text, padding=(14, 8), wraplength=700).pack(fill="x")
-        ttk.Label(self.analysis_tab, textvariable=self.contrast_text, style="Title.TLabel", padding=(14, 4), wraplength=700).pack(fill="x")
-        ttk.Label(self.analysis_tab, text="C = (背景均值 − 信号均值) / 背景均值。使用图片编码值，未做 gamma 线性化；约 285 nm 衬底先用 C_G 标定。", padding=(14, 4), wraplength=700).pack(fill="x")
-        ttk.Label(self.analysis_tab, textvariable=self.status_text, padding=(14, 4, 14, 12), wraplength=700).pack(fill="x")
+        ttk.Label(result_panel, textvariable=self.sample_text, padding=(14, 8), wraplength=700).pack(fill="x")
+        ttk.Label(result_panel, textvariable=self.contrast_text, style="Title.TLabel", padding=(14, 4), wraplength=700).pack(fill="x")
+        self.thickness_label = ttk.Label(result_panel, textvariable=self.thickness_text,
+                                         style="Title.TLabel", padding=(14, 4), wraplength=700)
+        self.thickness_label.pack(fill="x")
+        ttk.Label(result_panel, text="C = (背景均值 − 信号均值) / 背景均值。使用图片编码值，未做 gamma 线性化；约 285 nm 衬底先用 C_G 标定。", padding=(14, 4), wraplength=700).pack(fill="x")
+        ttk.Label(result_panel, textvariable=self.status_text, padding=(14, 4, 14, 12), wraplength=700).pack(fill="x")
         self._build_fitting_ui()
         self._build_regression_ui()
 
@@ -271,6 +296,45 @@ class OpticalContrastInspector(tk.Tk):
             self.contrast_text.set("C_R：—    C_G：—    C_B：—")
             self.status_text.set("点击 background 选择裸衬底区域，再点击 signal 选择 hBN 内部区域。")
         self._draw_markers()
+
+        self._reset_thickness()
+
+    def _reset_thickness(self):
+        self.thickness_result = None
+        self.thickness_button.configure(state="disabled")
+        if self.fit_result is None:
+            reason = "请先在“拟合”页完成线性拟合。"
+        elif self.drag_anchor is not None:
+            reason = "选区调整中，请松开鼠标后计算。"
+        elif self.image is None or any(box is None for box in self.samples.values()):
+            reason = f"已拟合 {self.fit_result['channel']}；请选择 background 和 signal。"
+        else:
+            channel = self.fit_result["channel"]
+            if self.current_contrasts()[CHANNELS.index(channel)] is None:
+                reason = f"{channel} 未定义（背景通道均值为 0），请重新选择背景。"
+            else:
+                reason = f"将使用 {channel} 的拟合直线；点击“厚度计算”。"
+                self.thickness_button.configure(state="normal")
+        self.thickness_text.set("厚度：—；" + reason)
+
+    def calculate_thickness(self):
+        self._reset_thickness()
+        if self.thickness_button.instate(["disabled"]):
+            return
+        try:
+            prediction = predict_thickness(self.fit_result, self.current_contrasts())
+        except ValueError as exc:
+            self.thickness_text.set(f"厚度：—；{exc}")
+            return
+        self.thickness_result = prediction
+        text = (f"计算厚度：{prediction['thickness']:.6g} nm  |  "
+                f"使用通道：{prediction['channel']}，对比度：{prediction['contrast']:.6g}")
+        notes = []
+        if prediction["extrapolated"]:
+            notes.append("超出标定对比度范围，为外推结果")
+        if prediction["thickness"] < 0:
+            notes.append("结果为负值，请检查采样或标定适用性")
+        self.thickness_text.set(text + ("\n" + "；".join(notes) if notes else ""))
 
     def current_contrasts(self):
         if self.image is None or any(box is None for box in self.samples.values()):
@@ -369,6 +433,7 @@ class OpticalContrastInspector(tk.Tk):
 
     def _invalidate_fit(self):
         self.fit_result = None
+        self._reset_thickness()
         if hasattr(self, "fit_parameters"):
             self.fit_parameters.set("斜率：—     截距：—     R²：—")
             self.regression_status.set("数据或勾选已改变，请点击“开始 / 更新拟合”。")
@@ -400,6 +465,7 @@ class OpticalContrastInspector(tk.Tk):
         r2 = "未定义（厚度全部相同）" if result["r_squared"] is None else f"{result['r_squared']:.8g}"
         self.fit_parameters.set(f"斜率：{result['slope']:.8g}     截距：{result['intercept']:.8g}     R²：{r2}")
         self.regression_status.set(f"已拟合 {len(rows)} 个点；训练 RMSE = {result['rmse']:.6g} nm（不是独立验证误差）。横轴：{channel}，无量纲。")
+        self._reset_thickness()
         self._draw_fit_plot()
 
 
@@ -720,6 +786,7 @@ class OpticalContrastInspector(tk.Tk):
         if self.drag_anchor is not None:
             self.drag_box = region_box(self.drag_anchor, self.drag_anchor)
             self.add_fit_button.configure(state="disabled")
+            self._reset_thickness()
             self._draw_markers()
 
     def _motion(self, event):

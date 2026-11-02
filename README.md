@@ -18,7 +18,8 @@ python optical_contrast/optical_contrast_inspector.py
 1. 打开本地图片，用 **background** 选取裸衬底区域，用 **signal** 选取样品区域。支持单点和矩形采样。
 2. 点击“加入拟合”，填写 AFM 测得的厚度（nm），勾选参与拟合的行。
 3. 选择 C_G（默认）、C_B 或 C_R，进行线性拟合，查看斜率、截距、R²、训练 RMSE 和残差图。
-4. 使用 TXT 导入、导出保存表格。
+4. 返回“图片分析”页，选择待测区域并点击“厚度计算”，显示预测厚度（nm）以及使用的拟合通道。
+5. 使用 TXT 导入、导出保存表格。
 
 对比度为 `C_X = (背景区域通道均值 - 样品区域通道均值) / 背景区域通道均值`，保留正负号。计算使用图片已有的 0–255 通道编码值；结果属于固定成像条件下的经验标定，真实厚度预测精度需要独立实验验证。
 
@@ -40,6 +41,7 @@ python optical_contrast/optical_contrast_inspector.py
 ```powershell
 python -m unittest discover -s tests -v
 python tests/gui_workflow.py
+python tests/gui_thickness.py
 ```
 
 测试使用合成数据；GUI 测试需要可用的桌面显示环境。
