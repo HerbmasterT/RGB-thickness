@@ -178,6 +178,8 @@ class OpticalContrastInspector(tk.Tk):
         self.image = None
         self.photo = None
         self.fit = True
+        self.zoom = 1.0
+        self.panning = False
         self.offset = (0, 0)
         self.display_size = (1, 1)
         self.resize_job = None
@@ -244,8 +246,8 @@ class OpticalContrastInspector(tk.Tk):
         panel.columnconfigure(0, weight=1)
         self.canvas = tk.Canvas(panel, background="#202630", highlightthickness=0, cursor="crosshair")
         self.canvas.grid(row=0, column=0, sticky="nsew")
-        vertical = ttk.Scrollbar(panel, orient="vertical", command=self.canvas.yview)
-        horizontal = ttk.Scrollbar(panel, orient="horizontal", command=self.canvas.xview)
+        vertical = ttk.Scrollbar(panel, orient="vertical", command=self._scroll_y)
+        horizontal = ttk.Scrollbar(panel, orient="horizontal", command=self._scroll_x)
         vertical.grid(row=0, column=1, sticky="ns")
         horizontal.grid(row=1, column=0, sticky="ew")
         self.canvas.configure(xscrollcommand=horizontal.set, yscrollcommand=vertical.set)
@@ -253,6 +255,12 @@ class OpticalContrastInspector(tk.Tk):
         self.canvas.bind("<ButtonPress-1>", self._press)
         self.canvas.bind("<B1-Motion>", self._motion)
         self.canvas.bind("<ButtonRelease-1>", self._release)
+        self.canvas.bind("<MouseWheel>", self._wheel)
+        self.canvas.bind("<Button-4>", self._wheel)
+        self.canvas.bind("<Button-5>", self._wheel)
+        self.canvas.bind("<ButtonPress-3>", self._pan_start)
+        self.canvas.bind("<B3-Motion>", self._pan_motion)
+        self.canvas.bind("<ButtonRelease-3>", self._pan_end)
         ttk.Label(result_panel, textvariable=self.sample_text, padding=(14, 8), wraplength=700).pack(fill="x")
         ttk.Label(result_panel, textvariable=self.contrast_text, style="Title.TLabel", padding=(14, 4), wraplength=700).pack(fill="x")
         self.thickness_label = ttk.Label(result_panel, textvariable=self.thickness_text,
@@ -358,6 +366,7 @@ class OpticalContrastInspector(tk.Tk):
 
 
     def clear_regions(self):
+        self._pan_end()
         self.samples = {"background": None, "signal": None}
         self.drag_anchor = self.drag_box = None
         self.pick_mode.set("")
@@ -393,6 +402,7 @@ class OpticalContrastInspector(tk.Tk):
         self.image = loaded
         self.notebook.select(self.analysis_tab)
         self.fit = True
+        self.zoom = 1.0
         self.clear_regions()
         self.background_button.configure(state="normal")
         self.signal_button.configure(state="normal")
@@ -739,8 +749,12 @@ class OpticalContrastInspector(tk.Tk):
 
     def set_view(self, fit):
         self.fit = fit
+        self.zoom = 1.0
+        self._pan_end()
+        selecting = self.drag_anchor is not None
         self.drag_anchor = self.drag_box = None
-        self._update_samples()
+        if selecting:
+            self._update_samples()
         self.canvas.xview_moveto(0)
         self.canvas.yview_moveto(0)
         self._render()
@@ -752,7 +766,9 @@ class OpticalContrastInspector(tk.Tk):
         self.resize_job = self.after(80, self._render)
 
 
-    def _render(self):
+    def _render(self, anchor=None):
+        if self.resize_job:
+            self.after_cancel(self.resize_job)
         self.resize_job = None
         self.canvas.delete("all")
         cw, ch = max(1, self.canvas.winfo_width()), max(1, self.canvas.winfo_height())
@@ -760,16 +776,99 @@ class OpticalContrastInspector(tk.Tk):
             self.canvas.create_text(cw / 2, ch / 2, text="点击「打开图片」开始分析\n\nbackground 选背景区域 · signal 选信号区域", fill="#ced7e3", font=("Microsoft YaHei UI", 16), justify="center")
             return
         iw, ih = self.image.size
-        scale = min(cw / iw, ch / ih, 1.0) if self.fit else 1.0
+        scale = min(cw / iw, ch / ih, 1.0) if self.fit else self.zoom
+        self.zoom = scale
         dw, dh = max(1, round(iw * scale)), max(1, round(ih * scale))
         self.display_size = (dw, dh)
         self.offset = (max(0, (cw - dw) // 2), max(0, (ch - dh) // 2))
-        display = self.image if (dw, dh) == self.image.size else self.image.resize((dw, dh), Image.Resampling.LANCZOS)
-        self.photo = ImageTk.PhotoImage(display, master=self)
-        self.canvas.create_image(*self.offset, anchor="nw", image=self.photo)
         self.canvas.configure(scrollregion=(0, 0, max(cw, dw), max(ch, dh)))
+        if anchor is not None:
+            ix, iy, x, y = anchor
+            self.canvas.xview_moveto((self.offset[0] + ix * dw - x) / max(cw, dw))
+            self.canvas.yview_moveto((self.offset[1] + iy * dh - y) / max(ch, dh))
+        self._render_view()
         self._draw_markers()
-        self.status_text.set(f"显示比例：{dw / iw:.1%}  |  Ctrl+O 打开图片 · Esc 清除选区 · 100% 模式可用滚动条浏览")
+        self.status_text.set(f"显示比例：{dw / iw:.1%}  |  滚轮缩放 · 右键拖动画面 · 左键采样 · Esc 清除选区")
+
+    def _render_view(self):
+        """Render only visible pixels; zooming must not allocate a huge full image."""
+        self.canvas.delete("image")
+        if self.image is None:
+            return
+        ox, oy = self.offset
+        dw, dh = self.display_size
+        vx, vy = math.floor(self.canvas.canvasx(0)), math.floor(self.canvas.canvasy(0))
+        left, top = max(ox, vx), max(oy, vy)
+        right = min(ox + dw, vx + self.canvas.winfo_width() + 1)
+        bottom = min(oy + dh, vy + self.canvas.winfo_height() + 1)
+        if right <= left or bottom <= top:
+            self.photo = None
+            return
+        iw, ih = self.image.size
+        box = ((left - ox) * iw / dw, (top - oy) * ih / dh,
+               min(iw, (right - ox) * iw / dw), min(ih, (bottom - oy) * ih / dh))
+        resample = Image.Resampling.NEAREST if self.zoom >= 1 else Image.Resampling.LANCZOS
+        display = self.image.resize((right - left, bottom - top), resample, box=box)
+        self.photo = ImageTk.PhotoImage(display, master=self)
+        self.canvas.create_image(left, top, anchor="nw", image=self.photo, tags="image")
+        self.canvas.tag_lower("image")
+
+    def _scroll_x(self, *args):
+        self.canvas.xview(*args)
+        self._render_view()
+
+    def _scroll_y(self, *args):
+        self.canvas.yview(*args)
+        self._render_view()
+
+    def _wheel(self, event):
+        if self.image is None or self.drag_anchor is not None or self.panning:
+            return "break"
+        if self._point(event) is None:
+            return "break"
+        number = getattr(event, "num", None)
+        delta = getattr(event, "delta", 0)
+        if number in (4, 5):
+            steps = 1 if number == 4 else -1
+        elif delta:
+            # Windows wheels use multiples of 120; small touchpad deltas still work.
+            steps = delta / 120 if abs(delta) >= 120 else (1 if delta > 0 else -1)
+        else:
+            return "break"
+        dw, dh = self.display_size
+        ix = (self.canvas.canvasx(event.x) - self.offset[0]) / dw
+        iy = (self.canvas.canvasy(event.y) - self.offset[1]) / dh
+        # Also permit unusually large images to zoom back out to their fit scale.
+        minimum = min(.05, self.canvas.winfo_width() / self.image.width,
+                      self.canvas.winfo_height() / self.image.height)
+        zoom = max(minimum, min(32.0, self.zoom * 1.2 ** max(-10, min(10, steps))))
+        if zoom != self.zoom:
+            self.fit = False
+            self.zoom = zoom
+            self._render(anchor=(ix, iy, event.x, event.y))
+        return "break"
+
+    def _pan_start(self, event):
+        if self.drag_anchor is not None or self._point(event) is None:
+            return "break"
+        dw, dh = self.display_size
+        if dw <= self.canvas.winfo_width() and dh <= self.canvas.winfo_height():
+            return "break"
+        self.panning = True
+        self.canvas.configure(cursor="fleur")
+        self.canvas.scan_mark(event.x, event.y)
+        return "break"
+
+    def _pan_motion(self, event):
+        if self.panning:
+            self.canvas.scan_dragto(event.x, event.y, gain=1)
+            self._render_view()
+        return "break"
+
+    def _pan_end(self, event=None):
+        self.panning = False
+        self.canvas.configure(cursor="crosshair")
+        return "break"
 
 
     def _point(self, event, clamp=False):
@@ -780,7 +879,7 @@ class OpticalContrastInspector(tk.Tk):
 
 
     def _press(self, event):
-        if self.pick_mode.get() not in self.samples:
+        if self.panning or self.pick_mode.get() not in self.samples:
             return
         self.drag_anchor = self._point(event)
         if self.drag_anchor is not None:

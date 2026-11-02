@@ -21,6 +21,8 @@ python optical_contrast/optical_contrast_inspector.py
 4. 返回“图片分析”页，选择待测区域并点击“厚度计算”，显示预测厚度（nm）以及使用的拟合通道。
 5. 使用 TXT 导入、导出保存表格。
 
+在图片上滑动滚轮可缩放；图片放大后，按住右键拖动可移动查看区域。左键继续用于采样，“适应窗口”和“100% 显示”可快速恢复视图。
+
 对比度为 `C_X = (背景区域通道均值 - 样品区域通道均值) / 背景区域通道均值`，保留正负号。计算使用图片已有的 0–255 通道编码值；结果属于固定成像条件下的经验标定，真实厚度预测精度需要独立实验验证。
 
 详细的采样方式、计算假设、数据格式和测试方法见 [使用说明](optical_contrast/README.md)。
@@ -42,6 +44,7 @@ python optical_contrast/optical_contrast_inspector.py
 python -m unittest discover -s tests -v
 python tests/gui_workflow.py
 python tests/gui_thickness.py
+python tests/gui_navigation.py
 ```
 
 测试使用合成数据；GUI 测试需要可用的桌面显示环境。
