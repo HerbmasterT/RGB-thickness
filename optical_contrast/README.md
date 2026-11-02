@@ -1,6 +1,6 @@
-# hBN 光学对比度标定（独立副本）
+# hBN 光学对比度标定
 
-用于尝试 hBN / 约 285 nm SiO₂ / Si 的反射图像、约 0–30 nm 厚度范围的经验标定。本目录从色差版本复制改写，不依赖其他版本的代码。原 HSV 和色差程序保持不变。
+用于尝试 hBN / 约 285 nm SiO₂ / Si 的反射图像、约 0–30 nm 厚度范围的经验标定。本目录是项目唯一保留的程序版本，可独立运行。
 
 双击本目录的 `start.bat` 启动。
 
@@ -52,7 +52,7 @@ C_R,C_G,C_B,厚度(nm)
 
 ## 运行和测试
 
-Python 3.10+、Tkinter、Pillow；与现有程序依赖相同。在本目录运行：
+需要 Python 3.10+、Tkinter、Pillow。在本目录运行：
 
 ```powershell
 python -m pip install -r requirements.txt

@@ -54,6 +54,6 @@
 
 ## 现有项目结构
 
-- 项目使用 Python、Tkinter 和 Pillow，运行方式及数据格式以各版本的 `README.md` 为准。
-- 根目录为 RGB 分析 / HSV 拟合版本，`color_difference/` 为色差拟合版本，`optical_contrast/` 为光学对比度拟合版本。三个版本独立保留，修改某一版本时避免无关地改动其他版本。
+- 项目使用 Python、Tkinter 和 Pillow，运行方式及数据格式以根目录和 `optical_contrast/` 中的 `README.md` 为准。
+- 项目仅保留 `optical_contrast/` 中的光学对比度拟合版本；根目录 `start.bat` 也启动此程序。原 HSV 和色差版本已按用户要求删除，不再维护或恢复，除非用户另行要求。
 - 尚未统一约定厚度预测精度的验收指标；不得将程序测试通过等同于真实样品厚度预测准确。
